@@ -202,11 +202,22 @@ def calculate_losses(
     MLM_loss: torch.Tensor = None
     NSP_loss: torch.Tensor = None
     
+    # mlm output shape : (seq len, batch size, token num)
+    # nsp_output shape : (batch, nsp label)
+    mlm_output, nsp_output = model(MLM_sentences)
     
-    # mlm은 mask token loss average
-    mlm_output, nsp_output = model(MLM_sentences.transpose(1, 0))
-    print(mlm_output)
-    print(nsp_output)
+    # declare cross entropy loss class
+    ce_loss = torch.nn.CrossEntropyLoss()
+    
+    # calculate NSP loss
+    NSP_label = NSP_label.to(torch.long)
+    NSP_loss = ce_loss(nsp_output, NSP_label)
+    
+    # calculate MLM loss
+    # use only masked token
+    src_sentence = source_sentences[MLM_mask]
+    mlm_output = mlm_output[MLM_mask]
+    MLM_loss = ce_loss(mlm_output, src_sentence)
 
     ### END YOUR CODE
     assert MLM_loss.shape == NSP_loss.shape == torch.Size()
