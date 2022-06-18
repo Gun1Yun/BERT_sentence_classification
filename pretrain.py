@@ -85,17 +85,44 @@ class PretrainDataset(IterableDataset):
             nsp_dist = torch.distributions.bernoulli.Bernoulli(torch.tensor([0.5]))
             nsp = nsp_dist.sample()
             
+            # 두개 문서 선택 
+            doc_indices = random.sample(range(len(self.dataset)), 2)
+            
             if nsp:
                 NSP_label = True
-                print("nsp!")
-                
+                doc_idx = doc_indices[0]
+                while len(self.dataset[doc_idx]) < 2:
+                    doc_idx = random.randint(0, len(self.dataset)-1)
+                    
+                sent1_idx = random.randint(0, len(self.dataset[doc_idx])-2)
+                sent2_idx = sent1_idx + 1
+                sent1 = self.dataset[doc_idx][sent1_idx]
+                sent2 = self.dataset[doc_idx][sent2_idx]
             else:
                 NSP_label = False
+                if len(self.dataset[doc_indices[0]]) < 2:
+                    sent1 = self.dataset[doc_indices[0]][0]
+                    sent2_idx = random.randint(0, len(self.dataset[doc_indices[1]])-1)
+                    sent2 = self.dataset[doc_indices[1]][sent2_idx]
+                else:
+                    sent1_idx = random.randint(0, len(self.dataset[doc_indices[0]])-1)
+                    sent1 = self.dataset[doc_indices[0]][sent1_idx]
+                    # if sentence 1 index is the last of doc, not consider next sentence
+                    if sent1_idx == len(self.dataset[doc_indices[0]])-1:
+                        sent2_idx = random.randint(0, len(self.dataset[doc_indices[1]])-1)
+                        sent2 = self.dataset[doc_indices[1]][sent2_idx]
+                    # if sentence 1 isn't last sentence of doc, consider next sentence of sent1
+                    else:
+                        next_sent1 = self.dataset[doc_indices[0]][sent1_idx+1]
+                        sent2_idx = random.randint(0, len(self.dataset[doc_indices[1]])-1)
+                        sent2 = self.dataset[doc_indices[1]][sent2_idx]
+                        
+                        while next_sent1 == sent2:
+                            sent2_idx = random.randint(0, len(self.dataset[doc_indices[1]])-1)
+                            sent2 = self.dataset[doc_indices[1]][sent2_idx]
 
-            # [sent1, sent2]
-            
             # make source sentences
-            pair = [sent1[0], sent2[0]]
+            pair = [sent1, sent2]
 
             source_sentences = [CLS]
             sent_length = 0
