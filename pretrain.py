@@ -201,6 +201,12 @@ def calculate_losses(
     ### YOUR CODE HERE (~4 lines)
     MLM_loss: torch.Tensor = None
     NSP_loss: torch.Tensor = None
+    
+    
+    # mlm은 mask token loss average
+    mlm_output, nsp_output = model(MLM_sentences.transpose(1, 0))
+    print(mlm_output)
+    print(nsp_output)
 
     ### END YOUR CODE
     assert MLM_loss.shape == NSP_loss.shape == torch.Size()
@@ -444,6 +450,6 @@ if __name__ == "__main__":
     random.seed(1234)
     torch.manual_seed(1234)
 
-    test_MLM_and_NSP_dataset()
+    #test_MLM_and_NSP_dataset()
     test_loss_calculation()
     pretrain_model()
