@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import IterableDataset
 
 ### You can import any Python standard libraries or pyTorch sub directories here
-
+from torch.utils.data import DataLoader
 ### END YOUR LIBRARIES
 
 import utils
@@ -165,8 +165,6 @@ class PretrainDataset(IterableDataset):
                 mlm_sent[glob_mask_idx[idx]] = rand_tok
 
             MLM_sentences = mlm_sent
-                    
-            # for specific 
             ### END YOUR CODE            
 
             assert len(source_sentences) == len(MLM_sentences) == len(MLM_mask)
@@ -277,15 +275,79 @@ def pretraining(
     batch_size = 16
     learning_rate = 1e-4
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    epochs = 30 # 200 if you want to feel the effect of pretraining
-    steps_per_a_epoch: int=2000
-    steps_for_val: int=200
+    # epochs = 30 # 200 if you want to feel the effect of pretraining
+    epochs = 5
+    steps_per_a_epoch: int=30
+    steps_for_val: int=10
+    # steps_per_a_epoch: int=2000
+    # steps_for_val: int=200
 
     ### YOUR CODE HERE
     MLM_train_losses: List[float] = None
     MLM_val_losses: List[float] = None
     NSP_train_losses: List[float] = None
     NSP_val_losses: List[float] = None
+    
+    training_dataset = PretrainDataset(train_dataset)
+    validation_dataset = PretrainDataset(val_dataset)
+    
+    train_loader = DataLoader(training_dataset, batch_size=batch_size, collate_fn=utils.imdb_collate_fn)
+    validation_loader = DataLoader(validation_dataset, batch_size=batch_size, collate_fn=utils.imdb_collate_fn)
+    
+    # initialize losses list
+    MLM_train_losses = []
+    MLM_val_losses = []
+    NSP_train_losses = []
+    NSP_val_losses = []
+    
+    for epoch in range(epochs):
+        train_steps = 0
+        val_steps = 0
+        
+        mlm_epoch_train_loss = 0
+        nsp_epoch_train_loss = 0
+        mlm_epoch_val_loss = 0
+        nsp_epoch_val_loss = 0
+        
+        # train part : need to model.train()
+        model.train()
+        for batch in train_loader:
+            optimizer.zero_grad()
+            train_steps += 1
+            src_sent, mlm_sent, mlm_mask, nsp_label = batch
+            mlm_loss, nsp_loss = calculate_losses(model, src_sent, mlm_sent, mlm_mask, nsp_label)
+            
+            mlm_epoch_train_loss += mlm_loss.item()
+            nsp_epoch_train_loss += nsp_loss.item()
+            loss = mlm_loss + nsp_loss
+            loss.backward()
+            optimizer.step()
+            
+            del loss, mlm_loss, nsp_loss
+            
+            if train_steps == steps_per_a_epoch:
+                break
+        
+        # validation part : need to model.eval()
+        model.eval()
+        for batch in validation_loader:
+            val_steps += 1
+            src_sent, mlm_sent, mlm_mask, nsp_label = batch
+            with torch.no_grad:
+                mlm_loss, nsp_loss = calculate_losses(model, src_sent, mlm_sent, mlm_mask, nsp_label)
+                mlm_epoch_val_loss += mlm_loss.item()
+                nsp_epoch_val_loss += nsp_loss.item()
+                
+                del mlm_loss, nsp_loss
+            
+            if val_steps == steps_for_val:
+                break
+            
+        # save loss per epoch
+        MLM_train_losses.append(mlm_epoch_train_loss/steps_per_a_epoch)
+        MLM_val_losses.append(mlm_epoch_val_loss/steps_for_val)
+        NSP_train_losses.append(nsp_epoch_train_loss/steps_per_a_epoch)
+        NSP_val_losses.append(nsp_epoch_val_loss/steps_for_val)
 
     ### END YOUR CODE
 
