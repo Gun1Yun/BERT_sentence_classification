@@ -1,4 +1,5 @@
 import os
+from textwrap import indent
 from typing import List, Union
 import pickle
 import random
@@ -68,7 +69,77 @@ class PretrainDataset(IterableDataset):
             MLM_sentences: List[int] = None
             MLM_mask: List[bool] = None
             NSP_label: bool = None
+            
+            global_mask_prob = 0.15
+            local_mask_prob = 0.8
+            local_rand_prob = 0.1
+            
+            # sample 2 sentences from dataset
+            idxs = random.sample(range(len(self.dataset)), 2)
+            
+            sent1, sent2 = self.dataset[idxs[0]], self.dataset[idxs[1]]
+            
+            # dist = torch.FloatTensor([0.5, 0.5])
+            # nsp = torch.multinomial(dist, 1)
+            
+            nsp_dist = torch.distributions.bernoulli.Bernoulli(torch.tensor([0.5]))
+            nsp = nsp_dist.sample()
+            
+            if nsp:
+                NSP_label = True
+                print("nsp!")
+                
+            else:
+                NSP_label = False
 
+            # [sent1, sent2]
+            
+            # make source sentences
+            pair = [sent1[0], sent2[0]]
+
+            source_sentences = [CLS]
+            sent_length = 0
+            for sent in pair:
+                source_sentences += sent
+                sent_length += len(sent)
+                source_sentences += [SEP]
+            
+            masking_prob = torch.tensor(1/sent_length)
+            src_sent = torch.tensor(source_sentences)
+            special_token = (src_sent == SEP) + (src_sent == CLS)
+            
+            dist_mask = torch.zeros_like(src_sent, dtype=torch.float32)
+            dist_mask[~special_token] = masking_prob
+
+            num_glob_masked = int(sent_length*global_mask_prob)
+            num_local_masked = int(num_glob_masked*local_mask_prob)
+            num_rand_masked = int(num_glob_masked*local_rand_prob)
+            
+            glob_mask_idx = torch.multinomial(dist_mask, num_glob_masked)
+            
+            # makse MLM_mask tensor
+            MLM_mask = torch.full(src_sent.shape, False)
+            MLM_mask[glob_mask_idx] = True
+            
+            # perm
+            indices = torch.randperm(glob_mask_idx.shape[0])
+            loc_mask_idx = indices[:num_local_masked]
+            loc_rand_idx = indices[num_local_masked:num_local_masked+num_rand_masked]
+            
+            mlm_sent = src_sent
+            mlm_sent[glob_mask_idx[loc_mask_idx]] = MSK
+            
+            loc_rand_idx = loc_rand_idx.tolist()
+            for idx in loc_rand_idx:
+                rand_tok = random.randint(5, self.dataset.token_num-1)
+                while mlm_sent[glob_mask_idx[idx]] == rand_tok:
+                    rand_tok = random.randint(5, self.dataset.token_num-1)
+                
+                mlm_sent[glob_mask_idx[idx]] = rand_tok
+
+            MLM_sentences = mlm_sent
+                    
+            # for specific 
             ### END YOUR CODE            
 
             assert len(source_sentences) == len(MLM_sentences) == len(MLM_mask)
