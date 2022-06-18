@@ -254,9 +254,9 @@ class TransformerEncoderBlock(nn.Module):
 
         assert output.shape == input_shape
 
-        print(output.shape)
-        print(output[-1])
-        print(output[:3, :3, 0])
+        # print(output.shape)
+        # print(output[-1])
+        # print(output[:3, :3, 0])
         return output
 
 #######################################################
