@@ -55,6 +55,22 @@ def dot_scaled_attention(
     ### YOUR CODE HERE (~4 lines)
     attention: torch.Tensor = None
     
+    # change dimensions order
+    query = query.transpose(0, 1)
+    key = key.transpose(0, 1)
+    value = value.transpose(0, 1)
+
+    att = torch.bmm(query, key.transpose(1, 2))
+    scaled_att = att/math.sqrt(d_k)
+    
+    # masking
+    masking = padding_mask.T.unsqueeze(1).expand(query_shape[1], query_shape[0], -1)
+    scaled_att[masking] = float("-inf")
+    
+    soft_att = torch.softmax(scaled_att, dim=2)
+    attention = torch.bmm(soft_att, value)
+    attention = attention.transpose(0, 1)
+
     ### END YOUR CODE
 
     # Don't forget setting attention result of <PAD> to zeros.
@@ -126,6 +142,23 @@ class MultiHeadAttention(nn.Module):
 
         ### YOUR CODE HERE (~6 lines)
         attention: torch.Tensor = None
+        # create empty attention
+        attention = torch.empty((seq_length, batch_size, hidden_dim))
+        
+        # get Q, K, V from W_q, W_k, W_v
+        Q = self.Q_linear(query)
+        K = self.K_linear(key)
+        V = self.V_linear(value)
+        
+        # concat each dot scaled attetion head
+        for i in range(self.n_head):
+            head_q = Q[:, :, i*self.d_k:(i+1)*self.d_k]
+            head_k = K[:, :, i*self.d_k:(i+1)*self.d_k]
+            head_v = V[:, :, i*self.d_k:(i+1)*self.d_k]
+            attention[:, :, i*self.d_k:(i+1)*self.d_k] = dot_scaled_attention(head_q, head_k, head_v, padding_mask)
+
+        # linear function
+        attention =self.O_linear(attention)
 
         ### END YOUR CODE
         assert attention.shape == input_shape
@@ -196,14 +229,34 @@ class TransformerEncoderBlock(nn.Module):
 
         ### YOUR CODE HERE (~5 lines)
         output: torch.Tensor = None
-
+        
+        # multi-head attention
+        att = self.attention.forward(x, x, x, padding_mask)
+        # dropout before add
+        drop_att = self.dropout1(att)
+        # residual connection
+        x = x + drop_att
+        # norm 
+        x = self.norm1(x)
+        
+        # feed forward
+        linear = self.output(x)
+        # dropout before add
+        drop_linear = self.dropout2(linear)
+        # add & norm
+        x = x + drop_linear
+        output = self.norm2(x)
         ### END YOUR CODE
 
         # Don't forget setting output result of <PAD> to zeros.
         # This will be useful for debuging
-        output[padding_mask] = 0. 
+        output[padding_mask] = 0.
 
         assert output.shape == input_shape
+
+        print(output.shape)
+        print(output[-1])
+        print(output[:3, :3, 0])
         return output
 
 #######################################################
@@ -338,6 +391,7 @@ def test_dot_scaled_attention():
     expected_attn = torch.Tensor([[ 0.17186931, -0.32684278,  0.07208001],
                                   [ 0.09157918, -0.25314212,  0.15069686],
                                   [ 0.17503032, -0.06557029,  0.45250115]])
+
     assert attention[:3, :3, 0].allclose(expected_attn, atol=1e-7), \
         "Your attention does not match the expected result"
     print("The first test passed!")

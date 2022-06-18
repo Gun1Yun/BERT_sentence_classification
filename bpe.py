@@ -1,5 +1,7 @@
+import re
 from typing import List, Dict, Set
 from itertools import chain
+from collections import Counter, defaultdict
 
 ### You can import any Python standard libraries here.
 ### Do not import external library such as numpy, torchtext, etc.
@@ -37,7 +39,59 @@ def build_bpe(
     WORD_END = BytePairEncoding.WORD_END # Use this token as the end of a word
 
     ### YOUR CODE HERE (~22 lines)
-    idx2word: List[str] = SPECIAL
+    idx2word: List[str] = SPECIAL    
+    
+    # append word_end token every word in corpus
+    corpus = [word+WORD_END for word in corpus]
+
+    # create set of vocaburary(only character)
+    vocabs =  []
+    for word in corpus:
+        vocabs += word
+    vocabs = set(vocabs)
+
+    # split all characters by spacing
+    # count the number of each word with Counter class
+    corpus = list(map(" ".join, corpus))
+    counter = Counter(corpus)
+    
+    # iteration
+    while True:
+        # constraint of maximum vocab size
+        if max_vocab_size <= len(vocabs)+len(SPECIAL):
+            break
+        
+        # make pair counter dict
+        pairs = defaultdict(int)
+        for word, freq in counter.items():
+            tokens = word.split()
+            
+            # make pair with side token
+            for i in range(len(tokens)-1):
+                pairs[(tokens[i], tokens[i+1])] += freq
+        
+        # no addition pair
+        if not pairs:
+            break
+        
+        # get the most frequent pair
+        new_pair = max(pairs, key=pairs.get)
+        new_token = "".join(new_pair)
+        vocabs.add(new_token)
+        
+        # update new counter with added token
+        new_counter = {}
+        old_token = " ".join(new_pair)
+        for word in counter:
+            changed_word = word.replace(old_token, new_token)
+            new_counter[changed_word] = counter[word]
+        
+        counter = new_counter
+        
+    result = list(vocabs)
+    result = sorted(result, reverse=True, key=len)
+        
+    idx2word+=result
 
     ### END YOUR CODE
 
@@ -61,7 +115,46 @@ def encode(
 
     ### YOUR CODE HERE (~10 lines)
     tokens: List[int] = None
+    # preprocessing
+    tokens = []
+    sentence = [word+WORD_END for word in sentence]
 
+    # for each word
+    for word in sentence:
+        # split word by space
+        word = list(map(" ".join, word))
+        word = " ".join(word)
+        
+        # for each splitted token
+        while True:
+            splited_word = word.split()
+            pair_idx = {}
+            
+            # get pair of token that in the vocaburary
+            for i in range(len(splited_word)-1):
+                pair = (splited_word[i], splited_word[i+1])
+                token = "".join(pair)
+                if token in idx2word:
+                    pair_idx[pair]=idx2word.index(token)
+            
+            # if no more pairs in there, stop iteration
+            if not pair_idx:
+                break
+            
+            # get max index of vocab for merge two tokens
+            new_pair = max(pair_idx, key=pair_idx.get)
+            new_token = "".join(new_pair)
+            word = word.replace(" ".join(new_pair), new_token)
+        
+        # get list of char in encoding word
+        splited_word = word.split()
+        
+        # append token index
+        for token in splited_word:
+            if token in idx2word:
+                tokens.append(idx2word.index(token))
+            else:
+                tokens.append(1)
     ### END YOUR CODE
 
     return tokens
@@ -84,6 +177,14 @@ def decode(
 
     ### YOUR CODE HERE (~1 lines)
     sentence: List[str] = None
+    decoded= ""
+
+    for token in tokens:
+        decoded += idx2word[token]
+
+    # split with end token
+    sentence = decoded.split(WORD_END)
+    sentence = sentence[:-1]
 
     ### END YOUR CODE
     return sentence
@@ -228,7 +329,7 @@ def test_consistency():
     vocab = build_bpe(chain.from_iterable(sentence.split() for sentence in corpus), 80)
     
     sentence = 'this is another sentence to test encoding and decoding .'.split()
-
+    
     assert decode(encode(sentence, vocab), vocab) == sentence, \
             "Your BPE does not show consistency."
     print("The consistency test passed!")
